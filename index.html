@@ -69,6 +69,21 @@ input.big{font-family:var(--f-num);font-size:22px;padding:6px 12px}
 .preview{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .preview b{font-family:var(--f-num);font-size:18px;color:var(--ink);font-weight:600}
 .tunrow{display:grid;grid-template-columns:1fr 110px;gap:8px;align-items:center}
+input[type="date"]{-webkit-appearance:none;appearance:none;display:block;width:100%;max-width:100%;min-width:0;min-height:46px;text-align:left}
+input[type="date"]::-webkit-date-and-time-value{text-align:left;margin:0}
+input[type="date"]::-webkit-calendar-picker-indicator{margin:0}
+select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 12px) 50%;background-size:6px 6px;background-repeat:no-repeat;padding-right:32px}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.seg button{font:inherit;font-size:14px;border:0;background:var(--surface);color:var(--muted);padding:10px 6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink);font-weight:700}
+.tgroup{display:flex;flex-direction:column;gap:6px}
+.tsel{border:1px solid var(--line);border-radius:var(--r);padding:10px;display:flex;flex-direction:column;gap:8px;background:var(--bg)}
+.tsel-h{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.tsel-h b{font-size:15px}
+.tsel .row input{background:var(--surface)}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:14px}
+.check input{width:22px;height:22px;flex:none;margin:1px 0 0}
+.uses{display:flex;flex-direction:column;gap:2px}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap}
 .thumbs img{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -137,15 +152,32 @@ th{color:var(--muted);font-weight:500}
 <input type="file" id="importFile" hidden>
 
 <script>
-const APP_VERSION='1.0.1';
+const APP_VERSION='1.1.1';
 const CATS={
   fuel:{label:'入油',c:'--c-fuel'}, tunnel:{label:'隧道',c:'--c-tunnel'}, parking:{label:'泊車',c:'--c-parking'},
   fine:{label:'罰款',c:'--c-fine'}, maint:{label:'維修保養',c:'--c-maint'}, license:{label:'牌費',c:'--c-license'},
   insurance:{label:'保險',c:'--c-insurance'}, wash:{label:'洗車美容',c:'--c-wash'}
 };
 const ORDER=Object.keys(CATS);
-const TUNNELS=['海底隧道','東區海底隧道','西區海底隧道','大老山隧道','獅子山隧道','大欖隧道','城門隧道','香港仔隧道','尖山隧道','將軍澳隧道'];
-const TUNNEL_DEFAULT={'大老山隧道':15,'大欖隧道':18,'香港仔隧道':8,'獅子山隧道':8,'城門隧道':8,'尖山隧道':8,'海底隧道':8,'東區海底隧道':8,'西區海底隧道':8};
+const HARBOUR_HINT='繁忙 $16・一般 $12・非繁忙 $8（星期日及公眾假期：一般 $10、非繁忙 $8）';
+const TOLLS=[
+  {name:'海底隧道',vary:true,hint:HARBOUR_HINT,def:8},
+  {name:'東區海底隧道',vary:true,hint:HARBOUR_HINT,def:8},
+  {name:'西區海底隧道',vary:true,hint:'繁忙 $24・一般 $12・非繁忙 $8（星期日及公眾假期：一般 $10、非繁忙 $8）',def:8},
+  {name:'大欖隧道',vary:true,hint:'繁忙 $18・一般 $12・非繁忙 $7.2（星期日及公眾假期全日 $7.2）',def:7.2},
+  {name:'大老山隧道',fixed:15},
+  {name:'獅子山隧道',fixed:8},
+  {name:'城門隧道',fixed:8},
+  {name:'香港仔隧道',fixed:8},
+  {name:'尖山／沙田嶺／大圍隧道',fixed:8,alias:['尖山隧道','沙田嶺隧道','大圍隧道']},
+  {name:'中九龍繞道',fixed:8,since:'2026-12-06',alias:['中九龍幹線']},
+];
+const tollOf=n=>TOLLS.find(t=>t.name===n||(t.alias||[]).includes(n));
+const STATIONS=[['加德士','加德士 Caltex'],['蜆殼','蜆殼 Shell'],['埃索','埃索 Esso'],['中石化','中石化 Sinopec'],['中國石油','中國石油 PetroChina']];
+const GRADES=['特級無鉛','無鉛汽油'];
+const FINE_DEFAULT={'違泊':400};
+const SVC={label:'更換紀錄',c:'--c-maint'};
+const catOf=r=>r.type==='service'?SVC:(CATS[r.type]||CATS.fuel);
 const MAINT_CHIPS=['機油','油隔','鏈油','風隔','火嘴','電池','煞車','車胎','鏈條牙盤'];
 const OIL_INTERVAL=3000;
 const BACKUP_REMIND_DAYS=14;
@@ -163,7 +195,7 @@ const DB={
 };
 const LS={get(k,d=null){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 
-const S={all:[],records:[],tab:'add',type:'fuel',editing:null,tunSel:{},maintSel:new Set(),year:null,month:null,filter:'all',open:null,confirmDel:null,busy:false,photoUrls:{},device:LS.get('deviceName',''),lastBackup:LS.get('lastBackup',null)};
+const S={all:[],records:[],tab:'add',type:'fuel',editing:null,tunSel:{},maintSel:new Set(),maintMode:'buy',useFrom:null,year:null,month:null,filter:'all',open:null,confirmDel:null,busy:false,photoUrls:{},device:LS.get('deviceName',''),lastBackup:LS.get('lastBackup',null)};
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -179,7 +211,7 @@ async function reload(){S.all=await DB.all('records');S.records=S.all.filter(r=>
 function fuels(){return sorted().filter(r=>r.type==='fuel'&&r.odo)}
 function lastOdo(){let m=0;for(const r of S.records)if(r.odo&&r.odo>m)m=r.odo;return m}
 function lastOf(type,pred=()=>true){return sorted().filter(r=>r.type===type&&pred(r)).pop()}
-function lastTunnelPrice(name){const r=lastOf('tunnel',x=>x.place===name);return r?r.amount:(TUNNEL_DEFAULT[name]??'')}
+function lastTunnelPrice(name){const t=tollOf(name);if(t&&t.fixed!=null)return t.fixed;const r=lastOf('tunnel',x=>x.place===name);return r?r.amount:(t?t.def:'')}
 function years(){const ys=new Set(S.records.map(r=>+r.date.slice(0,4)));ys.add(new Date().getFullYear());return [...ys].sort()}
 function odoBefore(ds){let m=0;for(const r of S.records)if(r.odo&&r.date<ds&&r.odo>m)m=r.odo;return m}
 function odoUpTo(ds){let m=0;for(const r of S.records)if(r.odo&&r.date<=ds&&r.odo>m)m=r.odo;return m}
@@ -197,49 +229,78 @@ const dataToBlob=async d=>(await fetch(d)).blob();
 
 /* ---------- add / edit form ---------- */
 function lastVal(type,key,fb=''){const r=lastOf(type,x=>x[key]);return r?r[key]:fb}
+function sel(id,opts,val){const has=opts.some(o=>o[0]===val);return `<select id="${id}">${opts.map(o=>`<option value="${esc(o[0])}" ${o[0]===val?'selected':''}>${esc(o[1])}</option>`).join('')}${val&&!has?`<option value="${esc(val)}" selected>${esc(val)}</option>`:''}</select>`}
+function purchases(){return sorted().filter(r=>r.type==='maint').reverse()}
+function usesOf(id){return sorted().filter(r=>r.type==='service'&&r.from===id)}
+function itemsField(v){return `<div class="field"><label>快速加入項目</label><div class="chips">${MAINT_CHIPS.map(x=>`<button type="button" class="chip" data-mchip="${x}" aria-pressed="${S.maintSel.has(x)}">${x}</button>`).join('')}</div></div>
+    <div class="field"><label for="f-items">項目內容</label><textarea id="f-items" rows="2">${v}</textarea></div>`}
+function tunnelPicker(){
+  const chip=t=>`<button type="button" class="chip" data-tun="${t.name}" aria-pressed="${t.name in S.tunSel}">${t.name}${t.fixed!=null?` $${t.fixed}`:''}</button>`;
+  const names=Object.keys(S.tunSel);
+  return `<div class="field"><label>揀隧道（可揀多條）</label>
+    <div class="tgroup"><span class="hint">分時段收費（預設上次付款金額）</span><div class="chips">${TOLLS.filter(t=>t.vary).map(chip).join('')}</div></div>
+    <div class="tgroup"><span class="hint">固定收費</span><div class="chips">${TOLLS.filter(t=>!t.vary).map(chip).join('')}</div></div></div>
+    ${names.map((n,i)=>{const t=tollOf(n)||{},x=S.tunSel[n];
+      return `<div class="tsel"><div class="tsel-h"><b>${esc(n)}</b><button type="button" class="chip" data-round="${esc(n)}" aria-pressed="${!!x.round}">來回</button></div>
+      <div class="row"><div class="field"><label for="tn-${i}-a">${x.round?'去程 $':'金額 $'}</label><input inputmode="decimal" id="tn-${i}-a" data-tuna="${esc(n)}" value="${esc(x.a)}"></div>
+      ${x.round?`<div class="field"><label for="tn-${i}-b">回程 $</label><input inputmode="decimal" id="tn-${i}-b" data-tunb="${esc(n)}" value="${esc(x.b)}"></div>`:''}</div>
+      <p class="hint">${t.fixed!=null?`固定收費 $${t.fixed}${t.since?`（${t.since.replace(/-0?/g,(m,i)=>i===4?'年':'月').replace(/$/,'日')}起收費）`:''}`:`參考：${t.hint||''}`}</p></div>`}).join('')}
+    ${names.length?'':'<p class="hint">揀咗隧道後會出現金額；撳「來回」會一次過記去程同回程兩筆。</p>'}`;
+}
 function formHTML(){
   const t=S.type,e=S.editing||{};
   const v=(k,fb='')=>esc(e[k]??fb);
-  const date=`<div class="field"><label for="f-date">日期</label><input type="date" id="f-date" value="${v('date',today())}"></div>`;
-  const amt=(lbl='金額 $')=>`<div class="field"><label for="f-amount">${lbl}</label><input class="big" inputmode="decimal" id="f-amount" value="${v('amount')}" placeholder="0"></div>`;
+  const date=(lbl='日期')=>`<div class="field"><label for="f-date">${lbl}</label><input type="date" id="f-date" value="${v('date',today())}"></div>`;
+  const amt=(lbl='金額 $',fb='')=>`<div class="field"><label for="f-amount">${lbl}</label><input class="big" inputmode="decimal" id="f-amount" value="${v('amount',fb)}" placeholder="0"></div>`;
   const lo=lastOdo();
+  const odo=(lbl='行車里數 km')=>`<div class="field"><label for="f-odo">${lbl}</label><input inputmode="numeric" id="f-odo" value="${v('odo')}" placeholder="上次 ${lo||'—'}"></div>`;
   let body='';
   if(t==='fuel'){
-    body=`<div class="row">${date}<div class="field"><label for="f-odo">行車里數 km</label><input inputmode="numeric" id="f-odo" value="${v('odo')}" placeholder="上次 ${lo||'—'}"></div></div>
+    body=`${date()}${odo()}
     <div class="row">${amt('入油總金額 $')}<div class="field"><label for="f-litres">入油量 L</label><input class="big" inputmode="decimal" id="f-litres" value="${v('litres')}" placeholder="0.000"></div></div>
     <div class="preview" id="fuelPreview"></div>
-    <div class="row"><div class="field"><label for="f-station">油公司</label><input id="f-station" list="dl-station" value="${v('station',lastVal('fuel','station','加德士'))}"></div>
-    <div class="field"><label for="f-grade">油種類</label><input id="f-grade" list="dl-grade" value="${v('grade',lastVal('fuel','grade','特級無鉛'))}"></div></div>
-    <datalist id="dl-station">${['加德士','蜆殼','埃索','中石化','中國石油'].map(x=>`<option value="${x}">`).join('')}</datalist>
-    <datalist id="dl-grade"><option value="特級無鉛"><option value="無鉛"></datalist>`;
+    <div class="row"><div class="field"><label for="f-station">油公司</label>${sel('f-station',STATIONS,e.station??lastVal('fuel','station','加德士'))}</div>
+    <div class="field"><label for="f-grade">油種類</label>${sel('f-grade',GRADES.map(g=>[g,g]),e.grade??lastVal('fuel','grade','特級無鉛'))}</div></div>`;
   } else if(t==='tunnel'){
     if(S.editing){
-      body=`<div class="row">${date}${amt()}</div><div class="field"><label for="f-place">隧道</label><input id="f-place" list="dl-tunnel" value="${v('place')}"></div><datalist id="dl-tunnel">${TUNNELS.map(x=>`<option value="${x}">`).join('')}</datalist>`;
-    } else {
-      const sel=Object.keys(S.tunSel);
-      body=`${date}<div class="field"><label>揀隧道（可揀多條，每條各記一筆）</label><div class="chips">${TUNNELS.map(x=>`<button type="button" class="chip" data-tun="${x}" aria-pressed="${x in S.tunSel}">${x.replace('海底隧道','隧')}</button>`).join('')}</div></div>
-      ${sel.length?sel.map((x,i)=>`<div class="tunrow"><label for="tn-${i}">${x}</label><input inputmode="decimal" id="tn-${i}" data-tunamt="${x}" value="${esc(S.tunSel[x])}"></div>`).join(''):'<p class="hint">金額會自動填上次付嘅價錢，可以改。</p>'}`;
-    }
+      const opts=TOLLS.map(x=>[x.name,x.name]);
+      body=`${date()}<div class="field"><label for="f-place">隧道</label>${sel('f-place',opts,e.place)}</div>${amt()}${e.trip?`<p class="hint">${esc(e.trip)}</p>`:''}`;
+    } else body=`${date()}${tunnelPicker()}`;
   } else if(t==='parking'){
-    body=`<div class="row">${date}${amt()}</div><div class="field"><label for="f-place">地點</label><input id="f-place" list="dl-place" value="${v('place')}" placeholder="例如：彩興苑停車場"></div>
+    body=`${date()}${amt()}<div class="field"><label for="f-place">地點</label><input id="f-place" list="dl-place" value="${v('place')}" placeholder="例如：彩興苑停車場"></div>
     <datalist id="dl-place">${[...new Set(S.records.filter(r=>r.type==='parking').map(r=>r.place))].map(x=>`<option value="${esc(x)}">`).join('')}</datalist>`;
   } else if(t==='fine'){
-    body=`<div class="row">${date}${amt('罰款金額 $')}</div><div class="field"><label for="f-kind">種類</label><input id="f-kind" list="dl-kind" value="${v('kind','違泊')}"></div>
+    const kind=e.kind??'違泊';
+    body=`${date()}<div class="field"><label for="f-kind">種類</label><input id="f-kind" list="dl-kind" value="${esc(kind)}"></div>
+    ${amt('罰款金額 $',S.editing?'':(FINE_DEFAULT[kind]??''))}
     <datalist id="dl-kind"><option value="違泊"><option value="遲交隧道費"><option value="超速"></datalist>`;
   } else if(t==='maint'){
-    body=`<div class="row">${date}<div class="field"><label for="f-odo">里數 km</label><input inputmode="numeric" id="f-odo" value="${v('odo')}" placeholder="上次 ${lo||'—'}"></div></div>
-    ${amt()}<div class="field"><label>快速加入項目</label><div class="chips">${MAINT_CHIPS.map(x=>`<button type="button" class="chip" data-mchip="${x}" aria-pressed="${S.maintSel.has(x)}">${x}</button>`).join('')}</div></div>
-    <div class="field"><label for="f-items">保養內容</label><textarea id="f-items" rows="2">${v('items')}</textarea></div>`;
+    const mode=S.maintMode;
+    const seg=S.editing?'':`<div class="seg" role="group" aria-label="記錄方式"><button type="button" data-mode="buy" aria-pressed="${mode==='buy'}">購買／維修開支</button><button type="button" data-mode="use" aria-pressed="${mode==='use'}">記錄更換／使用</button></div>`;
+    if(mode==='buy'){
+      const inst=S.editing?e.installed!==false:true;
+      body=`${seg}${date('付款日期')}${amt()}${itemsField(v('items'))}
+      <label class="check"><input type="checkbox" id="f-installed" ${inst?'checked':''}><span>即日已更換／使用<br><span class="hint">例如喺車房維修。買定零件之後先換，就唔好剔，換嗰日再用「記錄更換／使用」。</span></span></label>
+      <div id="odoWrap" ${inst?'':'hidden'}>${odo('更換時里數 km')}</div>`;
+    } else {
+      const from=S.editing?e.from:S.useFrom;
+      const ps=purchases().filter(p=>p.date>=String(new Date().getFullYear()-2)||p.id===from);
+      const opts=[['','唔關聯任何購買'],...ps.map(p=>[p.id,`${p.date}・${(p.items||'').slice(0,18)}・${money(p.amount)}`])];
+      body=`${seg}${date('更換／使用日期')}${odo('更換時里數 km')}${itemsField(v('items',S.useItems||''))}
+      <div class="field"><label for="f-from">用咗邊次買嘅物資（可選）</label>${sel('f-from',opts,from||'')}</div>
+      <p class="hint">呢個紀錄唔計入開支，只用嚟記低更換日期同里數，報告會用佢計保養提示。</p>`;
+    }
   } else if(t==='license'){
-    body=`<div class="row">${date}${amt()}</div>`;
+    body=`${date()}${amt()}`;
   } else if(t==='insurance'){
-    body=`<div class="row">${date}${amt()}</div><div class="field"><label for="f-place">保險公司</label><input id="f-place" value="${v('place',lastVal('insurance','place','QBE'))}"></div>`;
+    body=`${date()}${amt()}<div class="field"><label for="f-place">保險公司</label><input id="f-place" value="${v('place',lastVal('insurance','place','QBE'))}"></div>`;
   } else if(t==='wash'){
-    body=`<div class="row">${date}${amt()}</div><div class="field"><label for="f-items">內容</label><textarea id="f-items" rows="2" placeholder="例如：車冚、鏈油">${v('items')}</textarea></div>`;
+    body=`${date()}${amt()}<div class="field"><label for="f-items">內容</label><textarea id="f-items" rows="2" placeholder="例如：車冚、鏈油">${v('items')}</textarea></div>`;
   }
   const np=(e.photos||[]).length;
-  return `${backupBanner()}<section class="card" aria-label="${S.editing?'修改紀錄':'新增紀錄'}">
-    ${S.editing?`<div class="banner">修改中：${CATS[t].label} ${esc(e.date)}</div>`:''}
+  const title=S.editing?(e.type==='service'?SVC.label:CATS[t].label):'';
+  return `${S.editing?'':backupBanner()}<section class="card" aria-label="${S.editing?'修改紀錄':'新增紀錄'}">
+    ${S.editing?`<div class="banner">修改中：${title} ${esc(e.date)}</div>`:''}
     <div class="cats" role="group" aria-label="種類">${ORDER.map(k=>`<button type="button" class="cat" style="--c:var(${CATS[k].c})" data-type="${k}" aria-pressed="${k===t}" ${S.editing&&k!==t?'disabled':''}><i></i>${CATS[k].label}</button>`).join('')}</div>
     ${body}
     <div class="field"><label for="f-note">備註（可留空）</label><input id="f-note" value="${v('note')}"></div>
@@ -272,18 +333,33 @@ function readForm(){
   const t=S.type,r={type:t,date:g('f-date')||today()};
   const note=g('f-note');if(note)r.note=note;
   if(t==='tunnel'&&!S.editing){
-    const list=Object.keys(S.tunSel).map((x,i)=>({type:'tunnel',date:r.date,place:x,amount:Number(($('#tn-'+i)||{}).value),...(note?{note}:{})}));
+    keepTunnelAmts();
+    const list=[];
+    for(const n of Object.keys(S.tunSel)){const x=S.tunSel[n];
+      const base={type:'tunnel',date:r.date,place:n,...(note?{note}:{})};
+      if(x.round){list.push({...base,amount:Number(x.a),trip:'去程'},{...base,amount:Number(x.b),trip:'回程'})}
+      else list.push({...base,amount:Number(x.a)});
+    }
     if(!list.length)throw '請揀最少一條隧道';
     if(list.some(x=>!(x.amount>0)))throw '每條隧道都要有金額';
     return list;
+  }
+  if(t==='maint'&&S.maintMode==='use'){
+    r.type='service';r.amount=0;r.odo=num('f-odo');r.items=g('f-items');const f=g('f-from');if(f)r.from=f;
+    if(r.odo==null)delete r.odo;
+    if(!r.items)throw '請填更換咗乜嘢';
+    return [r];
   }
   r.amount=num('f-amount');
   if(!(r.amount>0))throw '請輸入金額';
   if(t==='fuel'){r.odo=num('f-odo');r.litres=num('f-litres');r.station=g('f-station');r.grade=g('f-grade');
     if(!(r.odo>0))throw '請輸入行車里數';if(!(r.litres>0))throw '請輸入入油量'}
-  if(t==='maint'){r.odo=num('f-odo');r.items=g('f-items');if(r.odo==null)delete r.odo;if(!r.items)throw '請填保養內容'}
+  if(t==='maint'){r.items=g('f-items');r.installed=$('#f-installed').checked;
+    if(r.installed){r.odo=num('f-odo');if(r.odo==null)delete r.odo}
+    if(!r.items)throw '請填保養內容'}
   if(t==='wash')r.items=g('f-items');
-  if(t==='parking'||t==='insurance'||t==='tunnel')r.place=g('f-place');
+  if(t==='parking'||t==='insurance')r.place=g('f-place');
+  if(t==='tunnel'){r.place=g('f-place');if(S.editing.trip)r.trip=S.editing.trip}
   if(t==='fine')r.kind=g('f-kind')||'違泊';
   return [r];
 }
@@ -302,7 +378,7 @@ async function save(){
     });
     await DB.putMany('records',out);
     toast(S.editing?'已更新':(out.length>1?`已儲存 ${out.length} 筆`:'已儲存'));
-    S.editing=null;S.tunSel={};S.maintSel=new Set();
+    S.editing=null;S.tunSel={};S.maintSel=new Set();S.useFrom=null;S.useItems='';
     if(S.returnTab){S.tab=S.returnTab;S.returnTab=null}
   }catch(e){err.textContent='儲存失敗：'+(e&&e.message||e);err.hidden=false}
   finally{S.busy=false;await reload()}
@@ -311,19 +387,28 @@ async function save(){
 /* ---------- list ---------- */
 function subline(r){
   switch(r.type){
-    case 'fuel':return `${r.odo} km · ${n2(r.litres,3)} L · $${n2(r.amount/r.litres)}/L`;
-    case 'tunnel':case 'parking':case 'insurance':return esc(r.place||'');
+    case 'fuel':return `${r.odo} km · ${n2(r.litres,3)} L · $${n2(r.amount/r.litres)}/L${r.station&&r.station!=='加德士'?' · '+esc(r.station):''}`;
+    case 'tunnel':return esc(r.place||'')+(r.trip?` · ${esc(r.trip)}`:'');
+    case 'parking':case 'insurance':return esc(r.place||'');
     case 'fine':return esc(r.kind||'');
-    case 'maint':return esc(r.items||'')+(r.odo?` · ${r.odo} km`:'');
+    case 'maint':{const u=r.installed===false?usesOf(r.id):[];return esc(r.items||'')+(r.installed===false?(u.length?` · 已用 ${u.length} 次`:' · 未記錄更換'):(r.odo?` · ${r.odo} km`:''))}
+    case 'service':return esc(r.items||'')+(r.odo?` · ${r.odo} km`:'');
     case 'wash':return esc(r.items||'');
     default:return '';
   }
 }
+function usageHTML(r){
+  if(r.type==='service'&&r.from){const p=S.records.find(x=>x.id===r.from);return p?`<div class="hint">物資來自 ${esc(p.date)} 購買：${esc((p.items||'').slice(0,40))}</div>`:''}
+  if(r.type!=='maint')return '';
+  const u=usesOf(r.id);
+  return `<div class="uses">${r.installed===false&&!u.length?'<span class="hint">未記錄更換／使用</span>':''}${u.map(x=>`<span class="hint">已用：${esc(x.date)}${x.odo?` · ${x.odo} km`:''} · ${esc(x.items||'')}</span>`).join('')}</div>
+  <button class="btn ghost" data-use="${r.id}" type="button">記錄使用呢批物資</button>`;
+}
 function itemHTML(r){
-  const c=CATS[r.type]||CATS.fuel;
+  const c=catOf(r);
   return `<button type="button" class="item" style="--c:var(${c.c})" data-open="${r.id}" aria-expanded="${S.open===r.id}">
     <span class="stripe"></span><span style="min-width:0"><span class="t">${c.label}</span> <span class="s">${r.date.slice(5).replace('-','/')}${r.by?` · ${esc(r.by)}`:''}</span><div class="s">${subline(r)}</div></span>
-    <span class="a">${money(r.amount,r.amount%1?2:0)}</span></button>
+    <span class="a">${r.type==='service'?'—':money(r.amount,r.amount%1?2:0)}</span></button>
     ${S.open===r.id?detailHTML(r):''}`;
 }
 function detailHTML(r){
@@ -331,6 +416,7 @@ function detailHTML(r){
   return `<div class="detail">
     <div>${esc(r.date)}${r.note?` · ${esc(r.note)}`:''}${r.by?` · 由 ${esc(r.by)} 記錄`:''}${r.editedBy&&r.editedBy!==r.by?`，${esc(r.editedBy)} 修改`:''}</div>
     ${links.length?`<div class="chips">${links.join('')}</div>`:''}
+    ${usageHTML(r)}
     ${(r.photos||[]).length?`<div class="thumbs" data-photos="${esc((r.photos||[]).join(','))}"></div>`:''}
     <div class="actions"><button class="btn ghost" data-edit="${r.id}">修改</button>${S.confirmDel===r.id?`<button class="btn danger" data-del="${r.id}">確定刪除</button>`:`<button class="btn ghost" data-askdel="${r.id}">刪除</button>`}</div>
   </div>`;
@@ -347,7 +433,7 @@ function listHTML(){
   if(S.filter!=='all')rs=rs.filter(r=>r.type===S.filter);
   const groups={};for(const r of rs)(groups[r.date.slice(0,7)]??=[]).push(r);
   const keys=Object.keys(groups);
-  return `<div class="chips" role="group" aria-label="篩選">${['all',...ORDER].map(k=>`<button class="chip" data-filter="${k}" aria-pressed="${S.filter===k}">${k==='all'?'全部':CATS[k].label}</button>`).join('')}</div>
+  return `<div class="chips" role="group" aria-label="篩選">${['all',...ORDER,'service'].map(k=>`<button class="chip" data-filter="${k}" aria-pressed="${S.filter===k}">${k==='all'?'全部':catOf({type:k}).label}</button>`).join('')}</div>
   ${keys.length?keys.map(k=>`<div><div class="month"><span>${k.slice(0,4)}年${+k.slice(5)}月</span><b>${money(sumBy(groups[k]).total)}</b></div><div class="list">${groups[k].map(itemHTML).join('')}</div></div>`).join(''):`<div class="empty">未有紀錄。去「記一筆」加第一筆，或者去「備份」匯入。</div>`}`;
 }
 
@@ -385,15 +471,19 @@ function lineChart(pts,{fmt=v=>v.toFixed(1),label}){
   g+=`<circle cx="${X(+new Date(last.x))}" cy="${Y(last.y)}" r="3.5" fill="var(--accent)"/><text x="${X(+new Date(last.x))+6}" y="${Y(last.y)+4}" style="fill:var(--ink);font-weight:700;font-size:12px">${fmt(last.y)}</text>`;
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">${g}</svg>`;
 }
+function events(){return sorted().filter(r=>r.type==='service'||(r.type==='maint'&&r.installed!==false))}
+function lastEvent(re,needOdo){return events().filter(r=>re.test(r.items||'')&&(!needOdo||r.odo)).pop()}
 function maintStatus(){
   const odo=lastOdo(),rows=[];
-  const oil=lastOf('maint',r=>/機油/.test(r.items||'')&&r.odo);
+  const oil=lastEvent(/機油/,true);
   if(oil){const since=odo-oil.odo;rows.push(`<div class="st"><span>換機油<div class="hint">上次 ${oil.date} · ${oil.odo} km</div></span><span class="pill ${since>=OIL_INTERVAL?'due':'ok'}">已行 ${since} km</span></div>`)}
-  const filt=lastOf('maint',r=>/油隔/.test(r.items||'')&&r.odo);
+  const filt=lastEvent(/油隔/,true);
   if(filt)rows.push(`<div class="st"><span>換油隔<div class="hint">上次 ${filt.date} · ${filt.odo} km</div></span><span class="pill info">已行 ${odo-filt.odo} km</span></div>`);
-  const chain=lastOf('maint',r=>/鏈|鍊/.test(r.items||''));
-  if(chain)rows.push(`<div class="st"><span>鏈條保養<div class="hint">上次 ${chain.date}</div></span><span class="pill info">${daysSince(chain.date)} 日前</span></div>`);
+  const chain=lastEvent(/鏈|鍊/);
+  if(chain)rows.push(`<div class="st"><span>鏈條保養<div class="hint">上次 ${chain.date}${chain.odo?` · ${chain.odo} km`:''}</div></span><span class="pill info">${daysSince(chain.date)} 日前</span></div>`);
   for(const k of ['license','insurance']){const r=lastOf(k);if(r){const d=daysSince(r.date);rows.push(`<div class="st"><span>${CATS[k].label}<div class="hint">上次 ${r.date} · ${money(r.amount)}</div></span><span class="pill ${d>=335?'due':'info'}">${d} 日前</span></div>`)}}
+  const pend=purchases().filter(p=>p.installed===false&&!usesOf(p.id).length);
+  if(pend.length)rows.push(`<div class="st"><span>未使用物資<div class="hint">${pend.slice(0,4).map(p=>`${esc(p.date)} ${esc((p.items||'').slice(0,16))}`).join('、')}</div></span><span class="pill info">${pend.length} 批</span></div>`);
   return rows.join('')||'<div class="empty">未有保養紀錄</div>';
 }
 function reportHTML(){
@@ -506,15 +596,19 @@ function render(){
   else v.innerHTML=settingsHTML();
   fillThumbs();
 }
-function keepTunnelAmts(){document.querySelectorAll('[data-tunamt]').forEach(i=>S.tunSel[i.dataset.tunamt]=i.value)}
+function keepTunnelAmts(){document.querySelectorAll('[data-tuna]').forEach(i=>{if(S.tunSel[i.dataset.tuna])S.tunSel[i.dataset.tuna].a=i.value});document.querySelectorAll('[data-tunb]').forEach(i=>{if(S.tunSel[i.dataset.tunb])S.tunSel[i.dataset.tunb].b=i.value})}
+function keepForm(){const it=$('#f-items');if(it)S.useItems=it.value;const d=$('#f-date');if(d&&!S.editing){}}
 document.addEventListener('click',async e=>{
   const img=e.target.closest('img[data-view]');if(img){$('#viewerImg').src=img.dataset.view;$('#viewer').hidden=false;return}
   if(e.target.closest('#viewer')){$('#viewer').hidden=true;return}
   const t=e.target.closest('button,rect[data-col]');if(!t)return;
   const d=t.dataset;
   if(d.tab){S.tab=d.tab;S.open=null;S.confirmDel=null;S.editing=null;render();window.scrollTo(0,0);return}
-  if(d.type&&!S.editing){S.type=d.type;S.tunSel={};S.maintSel=new Set();render();return}
-  if(d.tun){keepTunnelAmts();if(d.tun in S.tunSel)delete S.tunSel[d.tun];else S.tunSel[d.tun]=lastTunnelPrice(d.tun);render();return}
+  if(d.type&&!S.editing){S.type=d.type;S.tunSel={};S.maintSel=new Set();S.maintMode='buy';S.useFrom=null;S.useItems='';render();return}
+  if(d.tun){keepTunnelAmts();if(d.tun in S.tunSel)delete S.tunSel[d.tun];else{const a=lastTunnelPrice(d.tun);S.tunSel[d.tun]={a,b:a,round:false}}render();return}
+  if(d.round){keepTunnelAmts();const x=S.tunSel[d.round];if(x){x.round=!x.round;if(x.round&&(x.b===''||x.b==null))x.b=x.a}render();return}
+  if(d.mode){keepForm();S.maintMode=d.mode;render();return}
+  if(d.use){const p=S.records.find(x=>x.id===d.use);if(p){S.returnTab=S.tab;S.editing=null;S.tab='add';S.type='maint';S.maintMode='use';S.useFrom=p.id;S.useItems=p.items||'';S.maintSel=new Set();render();window.scrollTo(0,0)}return}
   if(d.mchip){const ta=$('#f-items');let items=ta.value.split(/[,，、]\s*/).map(s=>s.trim()).filter(Boolean);
     if(S.maintSel.has(d.mchip)){S.maintSel.delete(d.mchip);items=items.filter(x=>x!==d.mchip)}else{S.maintSel.add(d.mchip);if(!items.includes(d.mchip))items.push(d.mchip)}
     ta.value=items.join(', ');t.setAttribute('aria-pressed',S.maintSel.has(d.mchip));return}
@@ -524,14 +618,19 @@ document.addEventListener('click',async e=>{
   if(t.id==='exportBtn'){doExport();return}
   if(t.id==='importBtn'){$('#importFile').click();return}
   if(d.open){S.open=S.open===d.open?null:d.open;S.confirmDel=null;render();return}
-  if(d.edit){const r=S.records.find(x=>x.id===d.edit);if(r){S.returnTab=S.tab;S.editing={...r};S.type=r.type;S.tab='add';render();window.scrollTo(0,0)}return}
+  if(d.edit){const r=S.records.find(x=>x.id===d.edit);if(r){S.returnTab=S.tab;S.editing={...r};S.type=r.type==='service'?'maint':r.type;S.maintMode=r.type==='service'?'use':'buy';S.maintSel=new Set();S.tab='add';render();window.scrollTo(0,0)}return}
   if(d.askdel){S.confirmDel=d.askdel;render();return}
   if(d.del){const r=S.all.find(x=>x.id===d.del);if(r){await DB.putMany('records',[{id:r.id,type:r.type,date:r.date,amount:0,deleted:true,updatedAt:new Date().toISOString(),editedBy:S.device||undefined}]);S.open=null;S.confirmDel=null;toast('已刪除');reload()}return}
   if(d.filter){S.filter=d.filter;S.open=null;render();return}
   if(d.year){S.year=d.year==='all'?'all':+d.year;S.month=null;render();return}
   if(d.col!=null){S.month=S.month===+d.col?null:+d.col;render();return}
 });
-document.addEventListener('input',e=>{if(['f-amount','f-litres','f-odo'].includes(e.target.id))fuelPreview()});
+document.addEventListener('input',e=>{
+  const id=e.target.id;
+  if(['f-amount','f-litres','f-odo'].includes(id))fuelPreview();
+  if(id==='f-kind'&&!S.editing){const a=$('#f-amount'),def=FINE_DEFAULT[e.target.value.trim()];if(a&&def!=null&&(a.value===''||Object.values(FINE_DEFAULT).includes(+a.value)))a.value=def}
+});
+document.addEventListener('change',e=>{if(e.target.id==='f-installed'){const w=$('#odoWrap');if(w)w.hidden=!e.target.checked}});
 $('#importFile').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(f)doImport(f).finally(()=>{e.target.value=''})});
 
 (async()=>{
