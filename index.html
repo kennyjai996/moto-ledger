@@ -134,10 +134,10 @@ th{color:var(--muted);font-weight:500}
 </div></nav>
 <div class="toast" id="toast" hidden></div>
 <div class="viewer" id="viewer" hidden><img id="viewerImg" alt="收據相片"></div>
-<input type="file" id="importFile" accept=".json,application/json" hidden>
+<input type="file" id="importFile" hidden>
 
 <script>
-const APP_VERSION='1.0.0';
+const APP_VERSION='1.0.1';
 const CATS={
   fuel:{label:'入油',c:'--c-fuel'}, tunnel:{label:'隧道',c:'--c-tunnel'}, parking:{label:'泊車',c:'--c-parking'},
   fine:{label:'罰款',c:'--c-fine'}, maint:{label:'維修保養',c:'--c-maint'}, license:{label:'牌費',c:'--c-license'},
@@ -469,10 +469,13 @@ async function doExport(){
   if(!done){const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000)}
   S.lastBackup=now.toISOString();LS.set('lastBackup',S.lastBackup);toast('已匯出 '+name);render();
 }
+function readText(f){return f.text?f.text():new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('讀唔到檔案'));r.readAsText(f)})}
 async function doImport(file){
+  const m0=$('#importMsg');if(m0){m0.hidden=false;m0.classList.remove('warn');m0.textContent='匯入緊 '+(file.name||'')+' …'}
   const msg=$('#importMsg');
   try{
-    const data=JSON.parse(await file.text());
+    let txt=await readText(file);txt=txt.replace(/^\uFEFF/,'').trim();
+    let data;try{data=JSON.parse(txt)}catch(_){throw new Error('檔案內容唔係有效嘅備份（'+(file.name||'未命名')+'，'+Math.round((file.size||0)/1024)+' KB）')}
     if(data.app!=='moto-ledger'||!Array.isArray(data.records))throw new Error('呢個唔係洗費簿嘅備份檔');
     const have=Object.fromEntries((await DB.all('records')).map(r=>[r.id,r]));
     let add=0,upd=0,del=0;const put=[];
@@ -489,7 +492,7 @@ async function doImport(file){
     await reload();
     const m=`匯入完成：新增 ${add} 筆、更新 ${upd} 筆、刪除 ${del} 筆${pput.length?`、相片 ${pput.length} 張`:''}。`;
     toast(m);const mm=$('#importMsg');if(mm){mm.textContent=m;mm.hidden=false}
-  }catch(e){msg.textContent='匯入失敗：'+(e.message||e);msg.hidden=false;msg.classList.add('warn')}
+  }catch(e){const mm=$('#importMsg')||msg;if(mm){mm.textContent='匯入失敗：'+(e.message||e);mm.hidden=false;mm.classList.add('warn')}toast('匯入失敗：'+(e.message||e))}
 }
 
 /* ---------- render & events ---------- */
@@ -529,7 +532,7 @@ document.addEventListener('click',async e=>{
   if(d.col!=null){S.month=S.month===+d.col?null:+d.col;render();return}
 });
 document.addEventListener('input',e=>{if(['f-amount','f-litres','f-odo'].includes(e.target.id))fuelPreview()});
-$('#importFile').addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(f)doImport(f)});
+$('#importFile').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(f)doImport(f).finally(()=>{e.target.value=''})});
 
 (async()=>{
   try{if(navigator.storage&&navigator.storage.persist)await navigator.storage.persist()}catch(e){}
